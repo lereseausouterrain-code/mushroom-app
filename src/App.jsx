@@ -694,15 +694,17 @@ export default function MushroomFarmManagerApp() {
         </div>
 
         <Tabs defaultValue="dashboard" className="mt-8">
-          <TabsList className="grid w-full grid-cols-3 gap-2 rounded-2xl bg-white p-2 md:grid-cols-7">
-            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-            <TabsTrigger value="spawn">Spawn</TabsTrigger>
-            <TabsTrigger value="lots">Production Lots</TabsTrigger>
-            <TabsTrigger value="incubation">Incubation</TabsTrigger>
-            <TabsTrigger value="fruiting">Fruiting</TabsTrigger>
-            <TabsTrigger value="harvests">Harvests</TabsTrigger>
-            <TabsTrigger value="reports">Reports</TabsTrigger>
-          </TabsList>
+<div className="sticky top-0 z-40 mb-6 rounded-3xl border bg-white/95 p-2 shadow-sm backdrop-blur">
+  <TabsList className="flex w-full min-w-0 flex-nowrap justify-start gap-2 overflow-x-auto rounded-2xl bg-transparent p-0">
+    <TabsTrigger className="shrink-0" value="dashboard">Dashboard</TabsTrigger>
+    <TabsTrigger className="shrink-0" value="spawn">Spawn</TabsTrigger>
+    <TabsTrigger className="shrink-0" value="lots">Production Lots</TabsTrigger>
+    <TabsTrigger className="shrink-0" value="incubation">Incubation</TabsTrigger>
+    <TabsTrigger className="shrink-0" value="fruiting">Fruiting</TabsTrigger>
+    <TabsTrigger className="shrink-0" value="harvests">Harvests</TabsTrigger>
+    <TabsTrigger className="shrink-0" value="reports">Reports</TabsTrigger>
+  </TabsList>
+</div>
 
           <TabsContent value="dashboard" className="mt-6 space-y-6">
             <Card className="rounded-3xl shadow-sm">
