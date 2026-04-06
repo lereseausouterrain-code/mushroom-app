@@ -18,135 +18,17 @@ const speciesConfig = {
   Chestnut: { code: "CH", incubationDays: 30 },
 };
 
-const initialSpawn = [
-  {
-    id: crypto.randomUUID(),
-    species: "Blue Oyster",
-    supplier: "Amelium",
-    lotCode: "AM-BO-2026-03-A",
-    receivedDate: "2026-03-20",
-    bagsReceived: 8,
-    bagsRemaining: 5,
-    notes: "Strong lot",
-  },
-  {
-    id: crypto.randomUUID(),
-    species: "Lion's Mane",
-    supplier: "Amelium",
-    lotCode: "AM-LM-2026-03-B",
-    receivedDate: "2026-03-22",
-    bagsReceived: 6,
-    bagsRemaining: 2,
-    notes: "Low stock alert example",
-  },
-  {
-    id: crypto.randomUUID(),
-    species: "Chestnut",
-    supplier: "Amelium",
-    lotCode: "AM-CH-2026-03-C",
-    receivedDate: "2026-03-25",
-    bagsReceived: 5,
-    bagsRemaining: 4,
-    notes: "",
-  },
-];
+const initialSpawn = [];
 
-const initialLots = [
-  {
-    id: crypto.randomUUID(),
-    lotCode: "BO-2026-04-01-01",
-    species: "Blue Oyster",
-    inoculationDate: "2026-04-01",
-    expectedReadyDate: "2026-04-15",
-    blocksCreated: 75,
-    blocksAvailable: 75,
-    spawnBagsUsed: 2,
-    spawnReceiptId: null,
-    status: "incubating",
-    notes: "",
-  },
-  {
-    id: crypto.randomUUID(),
-    lotCode: "LM-2026-03-18-01",
-    species: "Lion's Mane",
-    inoculationDate: "2026-03-18",
-    expectedReadyDate: "2026-04-07",
-    blocksCreated: 20,
-    blocksAvailable: 20,
-    spawnBagsUsed: 1,
-    spawnReceiptId: null,
-    status: "incubating",
-    notes: "Should be ready soon",
-  },
-  {
-    id: crypto.randomUUID(),
-    lotCode: "CH-2026-03-01-01",
-    species: "Chestnut",
-    inoculationDate: "2026-03-01",
-    expectedReadyDate: "2026-03-31",
-    blocksCreated: 18,
-    blocksAvailable: 16,
-    spawnBagsUsed: 1,
-    spawnReceiptId: null,
-    status: "incubating",
-    notes: "2 blocks removed due to contamination",
-  },
-];
+const initialLots = [];
 
-const initialMoves = [
-  {
-    id: crypto.randomUUID(),
-    lotId: null,
-    lotCode: "BO-2026-03-15-01",
-    species: "Blue Oyster",
-    movedDate: "2026-03-29",
-    blocksMoved: 70,
-    notes: "Full move",
-  },
-];
+const initialMoves = [];
 
-const initialHarvests = [
-  {
-    id: crypto.randomUUID(),
-    lotCode: "BO-2026-03-15-01",
-    species: "Blue Oyster",
-    harvestDate: "2026-04-05",
-    pounds: 84,
-    notes: "Good flush",
-  },
-  {
-    id: crypto.randomUUID(),
-    lotCode: "LM-2026-03-01-01",
-    species: "Lion's Mane",
-    harvestDate: "2026-03-27",
-    pounds: 29,
-    notes: "",
-  },
-];
+const initialHarvests = [];
 
 const STORAGE_KEY = "mushroom-farm-manager-v1";
 
-const initialLosses = [
-  {
-    id: crypto.randomUUID(),
-    lotCode: "CH-2026-03-01-01",
-    species: "Chestnut",
-    lossDate: "2026-03-28",
-    blocksLost: 2,
-    reason: "contamination",
-    notes: "Green mold found during final week",
-  },
-];
-
-function loadAppState() {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
+const initialLosses = [];
 
 function saveAppState(state) {
   if (typeof window === "undefined") return;
