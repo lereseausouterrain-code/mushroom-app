@@ -124,6 +124,8 @@ const initialHarvests = [
   },
 ];
 
+const STORAGE_KEY = "mushroom-farm-manager-v1";
+
 const initialLosses = [
   {
     id: crypto.randomUUID(),
@@ -135,6 +137,25 @@ const initialLosses = [
     notes: "Green mold found during final week",
   },
 ];
+
+function loadAppState() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveAppState(state) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore storage failures
+  }
+}
 
 function addDays(dateString, days) {
   const date = new Date(`${dateString}T12:00:00`);
@@ -209,11 +230,13 @@ function SectionTitle({ title, description, action }) {
 }
 
 export default function MushroomFarmManagerApp() {
-  const [spawnInventory, setSpawnInventory] = useState(initialSpawn);
-  const [lots, setLots] = useState(initialLots);
-  const [moves, setMoves] = useState(initialMoves);
-  const [harvests, setHarvests] = useState(initialHarvests);
-  const [losses, setLosses] = useState(initialLosses);
+  const persisted = useMemo(() => loadAppState(), []);
+
+  const [spawnInventory, setSpawnInventory] = useState(() => persisted?.spawnInventory ?? initialSpawn);
+  const [lots, setLots] = useState(() => persisted?.lots ?? initialLots);
+  const [moves, setMoves] = useState(() => persisted?.moves ?? initialMoves);
+  const [harvests, setHarvests] = useState(() => persisted?.harvests ?? initialHarvests);
+  const [losses, setLosses] = useState(() => persisted?.losses ?? initialLosses);
   const [weather, setWeather] = useState({
     loading: true,
     location: "Sherbrooke, Quebec",
@@ -243,6 +266,10 @@ export default function MushroomFarmManagerApp() {
   const [moveForm, setMoveForm] = useState({ lotId: "", movedDate: isoToday(), blocksMoved: 1, notes: "" });
   const [harvestForm, setHarvestForm] = useState({ lotCode: "", harvestDate: isoToday(), pounds: 1, notes: "" });
   const [lossForm, setLossForm] = useState({ lotCode: "", lossDate: isoToday(), blocksLost: 1, reason: "contamination", notes: "" });
+
+  useEffect(() => {
+    saveAppState({ spawnInventory, lots, moves, harvests, losses });
+  }, [spawnInventory, lots, moves, harvests, losses]);
 
   useEffect(() => {
     async function loadWeather() {
@@ -573,6 +600,7 @@ export default function MushroomFarmManagerApp() {
                     Centralized tracking for spawn inventory, inoculation lots, incubation, fruiting moves, harvest yields,
                     contamination, and weather context.
                   </p>
+                  <p className="mt-2 text-xs text-slate-400">Data now saves automatically on this device.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
@@ -693,26 +721,16 @@ export default function MushroomFarmManagerApp() {
           </Card>
         </div>
 
-<Tabs defaultValue="dashboard" className="mt-8">
-  <div className="sticky top-0 z-40 mb-6 rounded-3xl border bg-white/95 p-2 shadow-sm backdrop-blur">
-    <TabsList className="flex w-full min-w-0 flex-nowrap justify-start gap-2 overflow-x-auto rounded-2xl bg-transparent p-0">
-      <TabsTrigger className="shrink-0" value="dashboard">Dashboard</TabsTrigger>
-      <TabsTrigger className="shrink-0" value="spawn">Spawn</TabsTrigger>
-      <TabsTrigger className="shrink-0" value="lots">Production Lots</TabsTrigger>
-      <TabsTrigger className="shrink-0" value="incubation">Incubation</TabsTrigger>
-      <TabsTrigger className="shrink-0" value="fruiting">Fruiting</TabsTrigger>
-      <TabsTrigger className="shrink-0" value="harvests">Harvests</TabsTrigger>
-      <TabsTrigger className="shrink-0" value="reports">Reports</TabsTrigger>
-    </TabsList>
-  </div>
-
-  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-    <MetricCard title="Incubating blocks" value={totalIncubatingBlocks} subtitle="Active lots only" icon={Sprout} />
-    <MetricCard title="Due this week" value={dueThisWeekBlocks} subtitle="Blocks expected ready in 7 days" icon={CalendarClock} />
-    <MetricCard title="Harvest this week" value={`${weeklyHarvestTotal} lb`} subtitle="Rolling 7-day harvest total" icon={Scale} />
-    <MetricCard title="Avg yield / block" value={`${averageYieldPerBlock.toFixed(2)} lb`} subtitle="Across harvested lots" icon={FlaskConical} />
-    <MetricCard title="Expected next 14 days" value={expectedNext14Days} subtitle="Blocks likely ready to fruit" icon={Package} />
-  </div>
+        <Tabs defaultValue="dashboard" className="mt-8">
+          <TabsList className="grid w-full grid-cols-3 gap-2 rounded-2xl bg-white p-2 md:grid-cols-7">
+            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="spawn">Spawn</TabsTrigger>
+            <TabsTrigger value="lots">Production Lots</TabsTrigger>
+            <TabsTrigger value="incubation">Incubation</TabsTrigger>
+            <TabsTrigger value="fruiting">Fruiting</TabsTrigger>
+            <TabsTrigger value="harvests">Harvests</TabsTrigger>
+            <TabsTrigger value="reports">Reports</TabsTrigger>
+          </TabsList>
 
           <TabsContent value="dashboard" className="mt-6 space-y-6">
             <Card className="rounded-3xl shadow-sm">
@@ -1230,9 +1248,9 @@ export default function MushroomFarmManagerApp() {
                 <CardTitle>Notes on this build</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-slate-600">
-                <p>This is a working front-end MVP prototype for your farm workflow.</p>
+                <p>This build now saves farm data locally on the current device/browser.</p>
                 <p>It includes weather context via Open-Meteo, low spawn alerts under 3 bags, incubation timing by species, fruiting moves, harvest logging in pounds, and contamination/loss tracking.</p>
-                <p>The next production step would be connecting this UI to a real database and authentication layer so both you and your partner can use the same live data across phones and laptops.</p>
+                <p>The next production step is still connecting a shared database and authentication layer so both you and your partner can use the same live data across phones and laptops.</p>
               </CardContent>
             </Card>
           </TabsContent>
