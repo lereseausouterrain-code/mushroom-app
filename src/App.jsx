@@ -693,18 +693,26 @@ export default function MushroomFarmManagerApp() {
           </Card>
         </div>
 
-        <Tabs defaultValue="dashboard" className="mt-8">
-<div className="sticky top-0 z-40 mb-6 rounded-3xl border bg-white/95 p-2 shadow-sm backdrop-blur">
-  <TabsList className="flex w-full min-w-0 flex-nowrap justify-start gap-2 overflow-x-auto rounded-2xl bg-transparent p-0">
-    <TabsTrigger className="shrink-0" value="dashboard">Dashboard</TabsTrigger>
-    <TabsTrigger className="shrink-0" value="spawn">Spawn</TabsTrigger>
-    <TabsTrigger className="shrink-0" value="lots">Production Lots</TabsTrigger>
-    <TabsTrigger className="shrink-0" value="incubation">Incubation</TabsTrigger>
-    <TabsTrigger className="shrink-0" value="fruiting">Fruiting</TabsTrigger>
-    <TabsTrigger className="shrink-0" value="harvests">Harvests</TabsTrigger>
-    <TabsTrigger className="shrink-0" value="reports">Reports</TabsTrigger>
-  </TabsList>
-</div>
+<Tabs defaultValue="dashboard" className="mt-8">
+  <div className="sticky top-0 z-40 mb-6 rounded-3xl border bg-white/95 p-2 shadow-sm backdrop-blur">
+    <TabsList className="flex w-full min-w-0 flex-nowrap justify-start gap-2 overflow-x-auto rounded-2xl bg-transparent p-0">
+      <TabsTrigger className="shrink-0" value="dashboard">Dashboard</TabsTrigger>
+      <TabsTrigger className="shrink-0" value="spawn">Spawn</TabsTrigger>
+      <TabsTrigger className="shrink-0" value="lots">Production Lots</TabsTrigger>
+      <TabsTrigger className="shrink-0" value="incubation">Incubation</TabsTrigger>
+      <TabsTrigger className="shrink-0" value="fruiting">Fruiting</TabsTrigger>
+      <TabsTrigger className="shrink-0" value="harvests">Harvests</TabsTrigger>
+      <TabsTrigger className="shrink-0" value="reports">Reports</TabsTrigger>
+    </TabsList>
+  </div>
+
+  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+    <MetricCard title="Incubating blocks" value={totalIncubatingBlocks} subtitle="Active lots only" icon={Sprout} />
+    <MetricCard title="Due this week" value={dueThisWeekBlocks} subtitle="Blocks expected ready in 7 days" icon={CalendarClock} />
+    <MetricCard title="Harvest this week" value={`${weeklyHarvestTotal} lb`} subtitle="Rolling 7-day harvest total" icon={Scale} />
+    <MetricCard title="Avg yield / block" value={`${averageYieldPerBlock.toFixed(2)} lb`} subtitle="Across harvested lots" icon={FlaskConical} />
+    <MetricCard title="Expected next 14 days" value={expectedNext14Days} subtitle="Blocks likely ready to fruit" icon={Package} />
+  </div>
 
           <TabsContent value="dashboard" className="mt-6 space-y-6">
             <Card className="rounded-3xl shadow-sm">
