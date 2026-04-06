@@ -19,17 +19,12 @@ const speciesConfig = {
 };
 
 const initialSpawn = [];
-
 const initialLots = [];
-
 const initialMoves = [];
-
 const initialHarvests = [];
-
-const STORAGE_KEY = "mushroom-farm-manager-v1";
-
 const initialLosses = [];
 
+const STORAGE_KEY = "mushroom-farm-manager-v1";
 function saveAppState(state) {
   if (typeof window === "undefined") return;
   try {
