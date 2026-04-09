@@ -1,3 +1,4 @@
+import { supabase } from "./lib/supabase";
 import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CloudSun, AlertTriangle, Package, Sprout, Scale, FlaskConical, CalendarClock, Plus, CheckCircle2, RotateCcw } from "lucide-react";
+import {
+  CloudSun,
+  AlertTriangle,
+  Package,
+  Sprout,
+  Scale,
+  FlaskConical,
+  CalendarClock,
+  Plus,
+  CheckCircle2,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 
 const speciesConfig = {
   "Blue Oyster": { code: "BO", incubationDays: 14 },
@@ -17,12 +30,9 @@ const speciesConfig = {
   Chestnut: { code: "CH", incubationDays: 30 },
 };
 
-const initialSpawn = [];
-const initialLots = [];
 const initialMoves = [];
 const initialHarvests = [];
 const initialLosses = [];
-
 const STORAGE_KEY = "mushroom-farm-manager-v1";
 
 function loadAppState() {
@@ -61,6 +71,7 @@ function isoToday() {
 }
 
 function formatDate(dateString) {
+  if (!dateString) return "—";
   return new Date(`${dateString}T12:00:00`).toLocaleDateString();
 }
 
@@ -73,7 +84,7 @@ function groupByWeek(items) {
     const diff = first.getDate() - day + (day === 0 ? -6 : 1);
     first.setDate(diff);
     const key = first.toISOString().slice(0, 10);
-    map[key] = (map[key] || 0) + item.pounds;
+    map[key] = (map[key] || 0) + Number(item.pounds || 0);
   });
 
   return Object.entries(map)
@@ -86,6 +97,37 @@ function average(arr) {
   return arr.reduce((sum, value) => sum + value, 0) / arr.length;
 }
 
+function mapSpawnRow(row) {
+  return {
+    id: row.id,
+    species: row.species,
+    supplier: row.supplier,
+    lotCode: row.lot_code,
+    receivedDate: row.received_date,
+    bagsReceived: Number(row.bags_received || 0),
+    bagsRemaining: Number(row.bags_remaining || 0),
+    notes: row.notes ?? "",
+    createdAt: row.created_at ?? null,
+  };
+}
+
+function mapLotRow(row) {
+  return {
+    id: row.id,
+    lotCode: row.lot_code,
+    species: row.species,
+    inoculationDate: row.inoculation_date,
+    expectedReadyDate: row.expected_ready_date,
+    blocksCreated: Number(row.blocks_created || 0),
+    blocksAvailable: Number(row.blocks_available || 0),
+    spawnBagsUsed: Number(row.spawn_bags_used || 0),
+    spawnReceiptId: row.spawn_receipt_id,
+    status: row.status || "incubating",
+    notes: row.notes ?? "",
+    createdAt: row.created_at ?? null,
+  };
+}
+
 function MetricCard({ title, value, subtitle, icon: Icon }) {
   return (
     <Card className="rounded-2xl shadow-sm">
@@ -93,7 +135,7 @@ function MetricCard({ title, value, subtitle, icon: Icon }) {
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm text-slate-500">{title}</p>
-            <p className="mt-2 text-3xl font-semibold tracking-tight">{value}</p>
+            <p className="mt-2 text-3xl font-semibold tracking-tight">{value || 0}</p>
             {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
           </div>
           <div className="rounded-2xl bg-slate-100 p-3">
@@ -105,11 +147,21 @@ function MetricCard({ title, value, subtitle, icon: Icon }) {
   );
 }
 
+function getEffectiveLotStatus(lot) {
+  if (lot.status === "closed" || lot.status === "moved") return lot.status;
+  if (!lot.blocksAvailable || Number(lot.blocksAvailable) <= 0) return "closed";
+
+  const today = new Date(`${isoToday()}T12:00:00`);
+  const readyDate = new Date(`${lot.expectedReadyDate}T12:00:00`);
+
+  return readyDate <= today ? "ready" : "incubating";
+}
+
 export default function MushroomFarmManagerApp() {
   const persisted = useMemo(() => loadAppState(), []);
 
-  const [spawnInventory, setSpawnInventory] = useState(() => persisted?.spawnInventory ?? initialSpawn);
-  const [lots, setLots] = useState(() => persisted?.lots ?? initialLots);
+  const [spawnInventory, setSpawnInventory] = useState([]);
+  const [lots, setLots] = useState([]);
   const [moves, setMoves] = useState(() => persisted?.moves ?? initialMoves);
   const [harvests, setHarvests] = useState(() => persisted?.harvests ?? initialHarvests);
   const [losses, setLosses] = useState(() => persisted?.losses ?? initialLosses);
@@ -134,9 +186,11 @@ export default function MushroomFarmManagerApp() {
 
   const [newLot, setNewLot] = useState({
     species: "Blue Oyster",
+    lotCode: "",
     inoculationDate: isoToday(),
-    blocksCreated: 1,
+    blocksCreated: 10,
     spawnBagsUsed: 1,
+    spawnReceiptId: "",
     notes: "",
   });
 
@@ -163,8 +217,32 @@ export default function MushroomFarmManagerApp() {
   });
 
   useEffect(() => {
-    saveAppState({ spawnInventory, lots, moves, harvests, losses });
-  }, [spawnInventory, lots, moves, harvests, losses]);
+    saveAppState({ moves, harvests, losses });
+  }, [moves, harvests, losses]);
+
+  useEffect(() => {
+    async function fetchData() {
+      const [{ data: spawnData, error: spawnError }, { data: lotsData, error: lotsError }] =
+        await Promise.all([
+          supabase.from("spawn_receipts").select("*").order("received_date", { ascending: true }),
+          supabase.from("lots_v2").select("*").order("created_at", { ascending: false }),
+        ]);
+
+      if (spawnError) {
+        console.error("Error loading spawn receipts:", spawnError);
+      } else {
+        setSpawnInventory((spawnData || []).map(mapSpawnRow));
+      }
+
+      if (lotsError) {
+        console.error("Error loading lots:", lotsError);
+      } else {
+        setLots((lotsData || []).map(mapLotRow));
+      }
+    }
+
+    fetchData();
+  }, []);
 
   useEffect(() => {
     async function loadWeather() {
@@ -199,171 +277,37 @@ export default function MushroomFarmManagerApp() {
     loadWeather();
   }, []);
 
+  const availableSpawnOptionsForNewLot = useMemo(() => {
+    return spawnInventory
+      .filter((item) => item.species === newLot.species && Number(item.bagsRemaining) > 0)
+      .sort((a, b) => new Date(a.receivedDate) - new Date(b.receivedDate));
+  }, [spawnInventory, newLot.species]);
+
   useEffect(() => {
-    setLots((prev) =>
-      prev.map((lot) => {
-        if (lot.status === "moved" || lot.status === "closed") return lot;
+    if (!availableSpawnOptionsForNewLot.length) {
+      if (newLot.spawnReceiptId !== "") {
+        setNewLot((prev) => ({ ...prev, spawnReceiptId: "" }));
+      }
+      return;
+    }
 
-        const today = new Date(`${isoToday()}T12:00:00`);
-        const readyDate = new Date(`${lot.expectedReadyDate}T12:00:00`);
-
-        if (readyDate <= today && lot.blocksAvailable > 0) {
-          return { ...lot, status: "ready" };
-        }
-
-        return { ...lot, status: "incubating" };
-      })
+    const stillValid = availableSpawnOptionsForNewLot.some(
+      (item) => String(item.id) === String(newLot.spawnReceiptId)
     );
-  }, []);
+
+    if (!stillValid) {
+      setNewLot((prev) => ({
+        ...prev,
+        spawnReceiptId: String(availableSpawnOptionsForNewLot[0].id),
+      }));
+    }
+  }, [availableSpawnOptionsForNewLot, newLot.spawnReceiptId]);
 
   function resetApp() {
     if (typeof window === "undefined") return;
     window.localStorage.removeItem(STORAGE_KEY);
     window.location.reload();
   }
-
-  const lowSpawnAlerts = useMemo(
-    () => spawnInventory.filter((item) => Number(item.bagsRemaining) < 3),
-    [spawnInventory]
-  );
-
-  const activeLots = useMemo(
-    () => lots.filter((lot) => lot.status === "incubating" || lot.status === "ready"),
-    [lots]
-  );
-
-  const lotsWithTiming = useMemo(() => {
-    const today = new Date();
-
-    return lots.map((lot) => {
-      const daysInIncubation = diffInDays(lot.inoculationDate, today);
-      const isReady =
-        lot.status !== "moved" &&
-        lot.blocksAvailable > 0 &&
-        new Date(`${lot.expectedReadyDate}T12:00:00`) <= today;
-
-      const isOverdue =
-        isReady && new Date(`${lot.expectedReadyDate}T12:00:00`) < new Date(`${isoToday()}T00:00:00`);
-
-      return {
-        ...lot,
-        daysInIncubation,
-        isReady,
-        isOverdue,
-      };
-    });
-  }, [lots]);
-
-  const readyLots = lotsWithTiming.filter((lot) => lot.isReady && lot.blocksAvailable > 0);
-  const overdueLots = lotsWithTiming.filter((lot) => lot.isOverdue && lot.blocksAvailable > 0);
-
-  const totalIncubatingBlocks = activeLots.reduce((sum, lot) => sum + Number(lot.blocksAvailable), 0);
-
-  const dueThisWeekBlocks = lotsWithTiming
-    .filter((lot) => lot.blocksAvailable > 0)
-    .filter((lot) => {
-      const ready = new Date(`${lot.expectedReadyDate}T12:00:00`);
-      const today = new Date(`${isoToday()}T12:00:00`);
-      const in7 = new Date(today);
-      in7.setDate(today.getDate() + 7);
-      return ready >= today && ready <= in7;
-    })
-    .reduce((sum, lot) => sum + Number(lot.blocksAvailable), 0);
-
-  const weeklyHarvestTotal = harvests
-    .filter((entry) => {
-      const harvestDate = new Date(`${entry.harvestDate}T12:00:00`);
-      const today = new Date(`${isoToday()}T12:00:00`);
-      const weekAgo = new Date(today);
-      weekAgo.setDate(today.getDate() - 7);
-      return harvestDate >= weekAgo && harvestDate <= today;
-    })
-    .reduce((sum, entry) => sum + Number(entry.pounds), 0);
-
-  const averageYieldPerBlock = useMemo(() => {
-    const yields = harvests
-      .map((harvest) => {
-        const lot = lots.find((item) => item.lotCode === harvest.lotCode);
-        const moved = moves.find((item) => item.lotCode === harvest.lotCode);
-        const baseBlocks = moved?.blocksMoved || lot?.blocksCreated || 0;
-        if (!baseBlocks) return null;
-        return harvest.pounds / baseBlocks;
-      })
-      .filter((value) => value !== null);
-
-    return average(yields);
-  }, [harvests, lots, moves]);
-
-  const expectedNext14Days = useMemo(() => {
-    const today = new Date(`${isoToday()}T12:00:00`);
-    const in14 = new Date(today);
-    in14.setDate(today.getDate() + 14);
-
-    return lotsWithTiming
-      .filter((lot) => lot.blocksAvailable > 0)
-      .filter((lot) => {
-        const ready = new Date(`${lot.expectedReadyDate}T12:00:00`);
-        return ready >= today && ready <= in14;
-      })
-      .reduce((sum, lot) => sum + Number(lot.blocksAvailable), 0);
-  }, [lotsWithTiming]);
-
-  const speciesSummary = useMemo(() => {
-    return Object.keys(speciesConfig).map((species) => {
-      const incubatingBlocks = activeLots
-        .filter((lot) => lot.species === species)
-        .reduce((sum, lot) => sum + Number(lot.blocksAvailable), 0);
-
-      const spawnRemaining = spawnInventory
-        .filter((item) => item.species === species)
-        .reduce((sum, item) => sum + Number(item.bagsRemaining), 0);
-
-      const speciesHarvests = harvests.filter((item) => item.species === species);
-
-      const avgLotYield = average(
-        speciesHarvests.map((harvest) => {
-          const moved = moves.find((item) => item.lotCode === harvest.lotCode);
-          const lot = lots.find((item) => item.lotCode === harvest.lotCode);
-          const blocks = moved?.blocksMoved || lot?.blocksCreated || 0;
-          return blocks ? harvest.pounds / blocks : 0;
-        })
-      );
-
-      const speciesLosses = losses
-        .filter((item) => item.species === species)
-        .reduce((sum, item) => sum + Number(item.blocksLost), 0);
-
-      return { species, incubatingBlocks, spawnRemaining, avgLotYield, speciesLosses };
-    });
-  }, [activeLots, spawnInventory, harvests, moves, lots, losses]);
-
-  const lotAnalytics = useMemo(() => {
-    const codes = Array.from(new Set([...lots.map((l) => l.lotCode), ...harvests.map((h) => h.lotCode)]));
-
-    return codes.map((lotCode) => {
-      const lot = lots.find((l) => l.lotCode === lotCode);
-      const move = moves.find((m) => m.lotCode === lotCode);
-      const lotHarvests = harvests.filter((h) => h.lotCode === lotCode);
-      const totalHarvest = lotHarvests.reduce((sum, h) => sum + Number(h.pounds), 0);
-      const blocks = move?.blocksMoved || lot?.blocksCreated || 0;
-      const yieldPerBlock = blocks ? totalHarvest / blocks : 0;
-      const lotLosses = losses
-        .filter((loss) => loss.lotCode === lotCode)
-        .reduce((sum, loss) => sum + Number(loss.blocksLost), 0);
-
-      return {
-        lotCode,
-        species: lot?.species || move?.species || lotHarvests[0]?.species || "—",
-        blocks,
-        totalHarvest,
-        yieldPerBlock,
-        lotLosses,
-        status: lot?.status || (totalHarvest > 0 ? "closed" : "moved"),
-      };
-    });
-  }, [lots, harvests, moves, losses]);
-
-  const weeklyHarvests = groupByWeek(harvests);
 
   function createLotCode(species, inoculationDate) {
     const code = speciesConfig[species].code;
@@ -373,22 +317,42 @@ export default function MushroomFarmManagerApp() {
     return `${code}-${inoculationDate}-${String(sameDayCount).padStart(2, "0")}`;
   }
 
-  function handleAddSpawn(e) {
+  function getSpawnById(id) {
+    return spawnInventory.find((item) => String(item.id) === String(id)) || null;
+  }
+
+  function getSpawnUsageCount(spawnReceiptId) {
+    return lots.filter((lot) => String(lot.spawnReceiptId) === String(spawnReceiptId)).length;
+  }
+
+  async function handleAddSpawn(e) {
     e.preventDefault();
 
-    const entry = {
-      id: crypto.randomUUID(),
+    const dbEntry = {
       species: newSpawn.species,
       supplier: newSpawn.supplier,
-      lotCode:
-        newSpawn.lotCode || `${speciesConfig[newSpawn.species].code}-SPAWN-${newSpawn.receivedDate}`,
-      receivedDate: newSpawn.receivedDate,
-      bagsReceived: Number(newSpawn.bagsReceived),
-      bagsRemaining: Number(newSpawn.bagsReceived),
-      notes: newSpawn.notes,
+      lot_code:
+        newSpawn.lotCode ||
+        `${speciesConfig[newSpawn.species].code}-SPAWN-${newSpawn.receivedDate}`,
+      received_date: newSpawn.receivedDate,
+      bags_received: Number(newSpawn.bagsReceived),
+      bags_remaining: Number(newSpawn.bagsReceived),
+      notes: newSpawn.notes || null,
     };
 
-    setSpawnInventory((prev) => [entry, ...prev]);
+    const { data, error } = await supabase.from("spawn_receipts").insert([dbEntry]).select();
+
+    if (error) {
+      alert(`Supabase error: ${error.message}`);
+      return;
+    }
+
+    const mapped = (data || []).map(mapSpawnRow);
+
+    setSpawnInventory((prev) =>
+      [...prev, ...mapped].sort((a, b) => new Date(a.receivedDate) - new Date(b.receivedDate))
+    );
+
     setNewSpawn({
       species: "Blue Oyster",
       supplier: "Amelium",
@@ -399,72 +363,157 @@ export default function MushroomFarmManagerApp() {
     });
   }
 
-  function handleAddLot(e) {
+  async function handleDeleteSpawn(id) {
+    const usageCount = getSpawnUsageCount(id);
+
+    if (usageCount > 0) {
+      alert("This spawn batch is already linked to one or more production lots and cannot be deleted.");
+      return;
+    }
+
+    const confirmed = window.confirm("Delete this spawn batch?");
+    if (!confirmed) return;
+
+    const { error } = await supabase.from("spawn_receipts").delete().eq("id", id);
+
+    if (error) {
+      alert(`Delete error: ${error.message}`);
+      return;
+    }
+
+    setSpawnInventory((prev) => prev.filter((item) => String(item.id) !== String(id)));
+  }
+
+  async function handleAddLot(e) {
     e.preventDefault();
+
+    if (!newLot.spawnReceiptId) {
+      alert("Please select a spawn batch");
+      return;
+    }
 
     const species = newLot.species;
     const inoculationDate = newLot.inoculationDate;
-    const expectedReadyDate = addDays(inoculationDate, speciesConfig[species].incubationDays);
-    const lotCode = createLotCode(species, inoculationDate);
+    const expectedReadyDate = addDays(
+      inoculationDate,
+      speciesConfig[species].incubationDays
+    );
+    const lotCode = newLot.lotCode || createLotCode(species, inoculationDate);
 
-    const availableSpawn = spawnInventory.filter(
-      (item) => item.species === species && item.bagsRemaining > 0
+    const { data, error } = await supabase.rpc("create_lot_and_deduct_spawn", {
+  p_lot_code: lotCode,
+  p_species: species,
+  p_inoculation_date: inoculationDate,
+  p_expected_ready_date: expectedReadyDate,
+  p_blocks_created: Number(newLot.blocksCreated),
+  p_spawn_bags_used: Number(newLot.spawnBagsUsed),
+  p_spawn_receipt_id: newLot.spawnReceiptId,
+  p_status: "incubating",
+  p_notes: newLot.notes || "",
+});
+
+    if (error) {
+      console.error("RPC ERROR:", error);
+      alert(error.message);
+      return;
+    }
+
+    const rpcRow = Array.isArray(data) ? data[0] : data;
+    if (!rpcRow) {
+      alert("Lot created but no row was returned by RPC.");
+      return;
+    }
+
+    const mappedLot = mapLotRow(rpcRow);
+    setLots((prev) => [mappedLot, ...prev]);
+
+    setSpawnInventory((prev) =>
+      prev.map((item) =>
+        String(item.id) === String(newLot.spawnReceiptId)
+          ? {
+              ...item,
+              bagsRemaining: Number(item.bagsRemaining) - Number(newLot.spawnBagsUsed),
+            }
+          : item
+      )
     );
 
-    if (!availableSpawn.length) {
-      alert(`No spawn inventory available for ${species}`);
-      return;
-    }
-
-    let bagsToUse = Number(newLot.spawnBagsUsed);
-    const updatedSpawn = [...spawnInventory];
-
-    for (const item of updatedSpawn.filter((entry) => entry.species === species)) {
-      if (bagsToUse <= 0) break;
-      const deduct = Math.min(item.bagsRemaining, bagsToUse);
-      item.bagsRemaining -= deduct;
-      bagsToUse -= deduct;
-    }
-
-    if (bagsToUse > 0) {
-      alert(`Not enough ${species} spawn inventory to cover ${newLot.spawnBagsUsed} bag(s).`);
-      return;
-    }
-
-    const entry = {
-      id: crypto.randomUUID(),
-      lotCode,
-      species,
-      inoculationDate,
-      expectedReadyDate,
-      blocksCreated: Number(newLot.blocksCreated),
-      blocksAvailable: Number(newLot.blocksCreated),
-      spawnBagsUsed: Number(newLot.spawnBagsUsed),
-      spawnReceiptId: null,
-      status: "incubating",
-      notes: newLot.notes,
-    };
-
-    setSpawnInventory(updatedSpawn);
-    setLots((prev) => [entry, ...prev]);
     setNewLot({
       species: "Blue Oyster",
+      lotCode: "",
       inoculationDate: isoToday(),
-      blocksCreated: 1,
+      blocksCreated: 10,
       spawnBagsUsed: 1,
+      spawnReceiptId: "",
       notes: "",
     });
+  }
+
+  async function handleDeleteLot(id) {
+    const lot = lots.find((item) => String(item.id) === String(id));
+    if (!lot) return;
+
+    const moveLinked = moves.some((item) => item.lotId === id || item.lotCode === lot.lotCode);
+    const harvestLinked = harvests.some((item) => item.lotCode === lot.lotCode);
+    const lossLinked = losses.some((item) => item.lotCode === lot.lotCode);
+
+    if (moveLinked || harvestLinked || lossLinked) {
+      alert(
+        "This lot already has fruiting, harvest, or loss history linked to it and cannot be deleted safely."
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete lot ${lot.lotCode}? This will restore ${lot.spawnBagsUsed} spawn bag(s) to the linked spawn batch.`
+    );
+    if (!confirmed) return;
+
+    const { error: deleteError } = await supabase.from("lots_v2").delete().eq("id", id);
+
+    if (deleteError) {
+      alert(`Delete error: ${deleteError.message}`);
+      return;
+    }
+
+    if (lot.spawnReceiptId) {
+      const linkedSpawn = getSpawnById(lot.spawnReceiptId);
+
+      if (linkedSpawn) {
+        const restoredRemaining = Number(linkedSpawn.bagsRemaining) + Number(lot.spawnBagsUsed);
+
+        const { error: restoreError } = await supabase
+          .from("spawn_receipts")
+          .update({ bags_remaining: restoredRemaining })
+          .eq("id", lot.spawnReceiptId);
+
+        if (restoreError) {
+          alert(`Lot deleted, but spawn restoration failed: ${restoreError.message}`);
+          return;
+        }
+
+        setSpawnInventory((prev) =>
+          prev.map((item) =>
+            String(item.id) === String(lot.spawnReceiptId)
+              ? { ...item, bagsRemaining: restoredRemaining }
+              : item
+          )
+        );
+      }
+    }
+
+    setLots((prev) => prev.filter((item) => String(item.id) !== String(id)));
   }
 
   function handleMoveToFruiting(e) {
     e.preventDefault();
 
-    const lot = lots.find((item) => item.id === moveForm.lotId);
+    const lot = lots.find((item) => String(item.id) === String(moveForm.lotId));
     if (!lot) return;
 
     const movedCount = Number(moveForm.blocksMoved);
 
-    if (movedCount <= 0 || movedCount > lot.blocksAvailable) {
+    if (movedCount <= 0 || movedCount > Number(lot.blocksAvailable)) {
       alert("Invalid block quantity.");
       return;
     }
@@ -483,8 +532,8 @@ export default function MushroomFarmManagerApp() {
 
     setLots((prev) =>
       prev.map((item) => {
-        if (item.id !== lot.id) return item;
-        const remaining = item.blocksAvailable - movedCount;
+        if (String(item.id) !== String(lot.id)) return item;
+        const remaining = Number(item.blocksAvailable) - movedCount;
 
         return {
           ...item,
@@ -504,14 +553,24 @@ export default function MushroomFarmManagerApp() {
       lots.find((item) => item.lotCode === harvestForm.lotCode) ||
       moves.find((item) => item.lotCode === harvestForm.lotCode);
 
-    if (!lotSource) return;
+    if (!lotSource) {
+      alert("Lot not found.");
+      return;
+    }
+
+    const pounds = Number(harvestForm.pounds);
+
+    if (pounds <= 0) {
+      alert("Harvest weight must be greater than 0.");
+      return;
+    }
 
     const entry = {
       id: crypto.randomUUID(),
       lotCode: harvestForm.lotCode,
       species: lotSource.species,
       harvestDate: harvestForm.harvestDate,
-      pounds: Number(harvestForm.pounds),
+      pounds,
       notes: harvestForm.notes,
     };
 
@@ -529,18 +588,21 @@ export default function MushroomFarmManagerApp() {
     e.preventDefault();
 
     const lot = lots.find((item) => item.lotCode === lossForm.lotCode);
-    if (!lot) return;
+    if (!lot) {
+      alert("Lot not found.");
+      return;
+    }
 
     const blocksLost = Number(lossForm.blocksLost);
 
-    if (blocksLost <= 0 || blocksLost > lot.blocksAvailable) {
+    if (blocksLost <= 0 || blocksLost > Number(lot.blocksAvailable)) {
       alert("Invalid lost block quantity.");
       return;
     }
 
     const entry = {
       id: crypto.randomUUID(),
-      lotCode: lossForm.lotCode,
+      lotCode: lot.lotCode,
       species: lot.species,
       lossDate: lossForm.lossDate,
       blocksLost,
@@ -553,7 +615,7 @@ export default function MushroomFarmManagerApp() {
     setLots((prev) =>
       prev.map((item) => {
         if (item.lotCode !== lossForm.lotCode) return item;
-        const remaining = item.blocksAvailable - blocksLost;
+        const remaining = Number(item.blocksAvailable) - blocksLost;
 
         return {
           ...item,
@@ -571,6 +633,156 @@ export default function MushroomFarmManagerApp() {
       notes: "",
     });
   }
+
+  const lowSpawnAlerts = useMemo(
+    () => spawnInventory.filter((item) => Number(item.bagsRemaining) < 3),
+    [spawnInventory]
+  );
+
+  const lotsWithTiming = useMemo(() => {
+    const today = new Date();
+
+    return lots.map((lot) => {
+      const effectiveStatus = getEffectiveLotStatus(lot);
+      const daysInIncubation = diffInDays(lot.inoculationDate, today);
+      const isReady = effectiveStatus === "ready";
+      const isOverdue =
+        isReady &&
+        new Date(`${lot.expectedReadyDate}T12:00:00`) < new Date(`${isoToday()}T00:00:00`);
+
+      return {
+        ...lot,
+        effectiveStatus,
+        daysInIncubation,
+        isReady,
+        isOverdue,
+      };
+    });
+  }, [lots]);
+
+  const activeLots = useMemo(
+    () =>
+      lotsWithTiming.filter(
+        (lot) => lot.effectiveStatus === "incubating" || lot.effectiveStatus === "ready"
+      ),
+    [lotsWithTiming]
+  );
+
+  const readyLots = lotsWithTiming.filter((lot) => lot.isReady && lot.blocksAvailable > 0);
+  const overdueLots = lotsWithTiming.filter((lot) => lot.isOverdue && lot.blocksAvailable > 0);
+
+  const totalIncubatingBlocks = activeLots.reduce(
+    (sum, lot) => sum + Number(lot.blocksAvailable || 0),
+    0
+  );
+
+  const dueThisWeekBlocks = lotsWithTiming
+    .filter((lot) => Number(lot.blocksAvailable) > 0)
+    .filter((lot) => {
+      const ready = new Date(`${lot.expectedReadyDate}T12:00:00`);
+      const today = new Date(`${isoToday()}T12:00:00`);
+      const in7 = new Date(today);
+      in7.setDate(today.getDate() + 7);
+      return ready >= today && ready <= in7;
+    })
+    .reduce((sum, lot) => sum + Number(lot.blocksAvailable || 0), 0);
+
+  const weeklyHarvestTotal = harvests
+    .filter((entry) => {
+      const harvestDate = new Date(`${entry.harvestDate}T12:00:00`);
+      const today = new Date(`${isoToday()}T12:00:00`);
+      const weekAgo = new Date(today);
+      weekAgo.setDate(today.getDate() - 7);
+      return harvestDate >= weekAgo && harvestDate <= today;
+    })
+    .reduce((sum, entry) => sum + Number(entry.pounds || 0), 0);
+
+  const averageYieldPerBlock = useMemo(() => {
+    const yields = harvests
+      .map((harvest) => {
+        const lot = lots.find((item) => item.lotCode === harvest.lotCode);
+        const moved = moves.find((item) => item.lotCode === harvest.lotCode);
+        const baseBlocks = moved?.blocksMoved || lot?.blocksCreated || 0;
+        if (!baseBlocks) return null;
+        return Number(harvest.pounds) / Number(baseBlocks);
+      })
+      .filter((value) => value !== null);
+
+    return average(yields);
+  }, [harvests, lots, moves]);
+
+  const expectedNext14Days = useMemo(() => {
+    const today = new Date(`${isoToday()}T12:00:00`);
+    const in14 = new Date(today);
+    in14.setDate(today.getDate() + 14);
+
+    return lotsWithTiming
+      .filter((lot) => Number(lot.blocksAvailable) > 0)
+      .filter((lot) => {
+        const ready = new Date(`${lot.expectedReadyDate}T12:00:00`);
+        return ready >= today && ready <= in14;
+      })
+      .reduce((sum, lot) => sum + Number(lot.blocksAvailable || 0), 0);
+  }, [lotsWithTiming]);
+
+  const speciesSummary = useMemo(() => {
+    return Object.keys(speciesConfig).map((species) => {
+      const incubatingBlocks = activeLots
+        .filter((lot) => lot.species === species)
+        .reduce((sum, lot) => sum + Number(lot.blocksAvailable || 0), 0);
+
+      const spawnRemaining = spawnInventory
+        .filter((item) => item.species === species)
+        .reduce((sum, item) => sum + Number(item.bagsRemaining || 0), 0);
+
+      const speciesHarvests = harvests.filter((item) => item.species === species);
+
+      const avgLotYield = average(
+        speciesHarvests.map((harvest) => {
+          const moved = moves.find((item) => item.lotCode === harvest.lotCode);
+          const lot = lots.find((item) => item.lotCode === harvest.lotCode);
+          const blocks = moved?.blocksMoved || lot?.blocksCreated || 0;
+          return blocks ? Number(harvest.pounds) / Number(blocks) : 0;
+        })
+      );
+
+      const speciesLosses = losses
+        .filter((item) => item.species === species)
+        .reduce((sum, item) => sum + Number(item.blocksLost || 0), 0);
+
+      return { species, incubatingBlocks, spawnRemaining, avgLotYield, speciesLosses };
+    });
+  }, [activeLots, spawnInventory, harvests, moves, lots, losses]);
+
+  const lotAnalytics = useMemo(() => {
+    const codes = Array.from(
+      new Set([...lots.map((l) => l.lotCode), ...harvests.map((h) => h.lotCode)])
+    );
+
+    return codes.map((lotCode) => {
+      const lot = lots.find((l) => l.lotCode === lotCode);
+      const move = moves.find((m) => m.lotCode === lotCode);
+      const lotHarvests = harvests.filter((h) => h.lotCode === lotCode);
+      const totalHarvest = lotHarvests.reduce((sum, h) => sum + Number(h.pounds || 0), 0);
+      const blocks = move?.blocksMoved || lot?.blocksCreated || 0;
+      const yieldPerBlock = blocks ? totalHarvest / Number(blocks) : 0;
+      const lotLosses = losses
+        .filter((loss) => loss.lotCode === lotCode)
+        .reduce((sum, loss) => sum + Number(loss.blocksLost || 0), 0);
+
+      return {
+        lotCode,
+        species: lot?.species || move?.species || lotHarvests[0]?.species || "—",
+        blocks,
+        totalHarvest,
+        yieldPerBlock,
+        lotLosses,
+        status: lot?.status || (totalHarvest > 0 ? "closed" : "moved"),
+      };
+    });
+  }, [lots, harvests, moves, losses]);
+
+  const weeklyHarvests = groupByWeek(harvests);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -591,7 +803,7 @@ export default function MushroomFarmManagerApp() {
                     fruiting moves, harvest yields, contamination, and weather context.
                   </p>
                   <p className="mt-2 text-xs text-slate-400">
-                    Data now saves automatically on this device.
+                    Spawn and lots use Supabase. Moves, harvests, and losses are still local only.
                   </p>
                 </div>
 
@@ -602,18 +814,14 @@ export default function MushroomFarmManagerApp() {
                       <div className="mt-1 font-medium">Sherbrooke, QC</div>
                     </div>
                     <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
-                      <div className="text-slate-300">Users</div>
-                      <div className="mt-1 font-medium">2 active</div>
+                      <div className="text-slate-300">Mode</div>
+                      <div className="mt-1 font-medium">Supabase live</div>
                     </div>
                   </div>
 
-                  <Button
-                    onClick={resetApp}
-                    variant="secondary"
-                    className="rounded-2xl"
-                  >
+                  <Button onClick={resetApp} variant="secondary" className="rounded-2xl">
                     <RotateCcw className="mr-2 h-4 w-4" />
-                    Reset Farm Data
+                    Reset Local Data
                   </Button>
                 </div>
               </div>
@@ -652,10 +860,6 @@ export default function MushroomFarmManagerApp() {
                       <div className="mt-1 text-lg font-medium">{weather.maxTemp}°C</div>
                     </div>
                   </div>
-                  <p className="text-xs text-slate-500">
-                    Use this as contextual weather data to compare external conditions with
-                    lot timing and yields.
-                  </p>
                 </div>
               )}
             </CardContent>
@@ -758,9 +962,7 @@ export default function MushroomFarmManagerApp() {
                       </div>
                       <div>
                         Spawn:{" "}
-                        <span className="font-medium text-slate-900">
-                          {item.spawnRemaining} bags
-                        </span>
+                        <span className="font-medium text-slate-900">{item.spawnRemaining} bags</span>
                       </div>
                       <div>
                         Avg yield/block:{" "}
@@ -801,9 +1003,7 @@ export default function MushroomFarmManagerApp() {
                   {weeklyHarvests.length ? (
                     weeklyHarvests.map((entry) => (
                       <div key={entry.weekStart} className="rounded-2xl bg-slate-100 p-4">
-                        <div className="text-sm text-slate-500">
-                          Week of {formatDate(entry.weekStart)}
-                        </div>
+                        <div className="text-sm text-slate-500">Week of {formatDate(entry.weekStart)}</div>
                         <div className="mt-2 text-2xl font-semibold">{entry.pounds} lb</div>
                       </div>
                     ))
@@ -822,14 +1022,11 @@ export default function MushroomFarmManagerApp() {
                 <CardContent>
                   <div className="space-y-3">
                     {lotsWithTiming
-                      .filter((lot) => lot.blocksAvailable > 0)
+                      .filter((lot) => Number(lot.blocksAvailable) > 0)
                       .sort((a, b) => a.expectedReadyDate.localeCompare(b.expectedReadyDate))
                       .slice(0, 6)
                       .map((lot) => (
-                        <div
-                          key={lot.id}
-                          className="flex items-center justify-between rounded-2xl border p-4"
-                        >
+                        <div key={lot.id} className="flex items-center justify-between rounded-2xl border p-4">
                           <div>
                             <div className="font-medium">{lot.lotCode}</div>
                             <div className="text-sm text-slate-500">
@@ -837,9 +1034,7 @@ export default function MushroomFarmManagerApp() {
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-sm font-medium">
-                              {formatDate(lot.expectedReadyDate)}
-                            </div>
+                            <div className="text-sm font-medium">{formatDate(lot.expectedReadyDate)}</div>
                             <Badge
                               variant={
                                 lot.isOverdue
@@ -849,17 +1044,7 @@ export default function MushroomFarmManagerApp() {
                                   : "secondary"
                               }
                             >
-                              {lot.isOverdue
-                                ? "Overdue"
-                                : lot.isReady
-                                ? "Ready"
-                                : `${Math.max(
-                                    diffInDays(
-                                      isoToday(),
-                                      new Date(`${lot.expectedReadyDate}T12:00:00`)
-                                    ),
-                                    0
-                                  )}d`}
+                              {lot.isOverdue ? "Overdue" : lot.isReady ? "Ready" : lot.effectiveStatus}
                             </Badge>
                           </div>
                         </div>
@@ -875,24 +1060,18 @@ export default function MushroomFarmManagerApp() {
                 <CardContent>
                   <div className="space-y-3 text-sm">
                     {[
-                      ...harvests
-                        .slice(0, 3)
-                        .map((h) => ({
-                          date: h.harvestDate,
-                          text: `Harvest logged: ${h.lotCode} · ${h.pounds} lb`,
-                        })),
-                      ...moves
-                        .slice(0, 3)
-                        .map((m) => ({
-                          date: m.movedDate,
-                          text: `Moved to fruiting: ${m.lotCode} · ${m.blocksMoved} blocks`,
-                        })),
-                      ...losses
-                        .slice(0, 3)
-                        .map((l) => ({
-                          date: l.lossDate,
-                          text: `Loss logged: ${l.lotCode} · ${l.blocksLost} blocks (${l.reason})`,
-                        })),
+                      ...harvests.slice(0, 3).map((h) => ({
+                        date: h.harvestDate,
+                        text: `Harvest logged: ${h.lotCode} · ${h.pounds} lb`,
+                      })),
+                      ...moves.slice(0, 3).map((m) => ({
+                        date: m.movedDate,
+                        text: `Moved to fruiting: ${m.lotCode} · ${m.blocksMoved} blocks`,
+                      })),
+                      ...losses.slice(0, 3).map((l) => ({
+                        date: l.lossDate,
+                        text: `Loss logged: ${l.lotCode} · ${l.blocksLost} blocks (${l.reason})`,
+                      })),
                     ]
                       .sort((a, b) => b.date.localeCompare(a.date))
                       .slice(0, 8)
@@ -936,6 +1115,7 @@ export default function MushroomFarmManagerApp() {
                         </SelectContent>
                       </Select>
                     </div>
+
                     <div>
                       <Label>Supplier</Label>
                       <Input
@@ -945,6 +1125,7 @@ export default function MushroomFarmManagerApp() {
                         }
                       />
                     </div>
+
                     <div>
                       <Label>Spawn lot code</Label>
                       <Input
@@ -955,6 +1136,7 @@ export default function MushroomFarmManagerApp() {
                         placeholder="Optional"
                       />
                     </div>
+
                     <div>
                       <Label>Received date</Label>
                       <Input
@@ -965,6 +1147,7 @@ export default function MushroomFarmManagerApp() {
                         }
                       />
                     </div>
+
                     <div>
                       <Label>Bags received</Label>
                       <Input
@@ -976,6 +1159,7 @@ export default function MushroomFarmManagerApp() {
                         }
                       />
                     </div>
+
                     <div>
                       <Label>Notes</Label>
                       <Textarea
@@ -986,6 +1170,7 @@ export default function MushroomFarmManagerApp() {
                         rows={3}
                       />
                     </div>
+
                     <Button className="w-full rounded-2xl">
                       <Plus className="mr-2 h-4 w-4" />
                       Add spawn receipt
@@ -1008,26 +1193,47 @@ export default function MushroomFarmManagerApp() {
                         <TableHead>Received</TableHead>
                         <TableHead>Total bags</TableHead>
                         <TableHead>Remaining</TableHead>
+                        <TableHead>Linked lots</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {spawnInventory.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell className="font-medium">{item.species}</TableCell>
-                          <TableCell>{item.supplier}</TableCell>
-                          <TableCell>{item.lotCode}</TableCell>
-                          <TableCell>{formatDate(item.receivedDate)}</TableCell>
-                          <TableCell>{item.bagsReceived}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              {item.bagsRemaining}
-                              {item.bagsRemaining < 3 ? (
-                                <Badge variant="destructive">Low</Badge>
-                              ) : null}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {spawnInventory.map((item) => {
+                        const usageCount = getSpawnUsageCount(item.id);
+                        const isProtected = usageCount > 0;
+
+                        return (
+                          <TableRow key={item.id}>
+                            <TableCell className="font-medium">{item.species}</TableCell>
+                            <TableCell>{item.supplier}</TableCell>
+                            <TableCell>{item.lotCode}</TableCell>
+                            <TableCell>{formatDate(item.receivedDate)}</TableCell>
+                            <TableCell>{item.bagsReceived}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span>{item.bagsRemaining}</span>
+                                {item.bagsRemaining < 3 ? <Badge variant="destructive">Low</Badge> : null}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {usageCount > 0 ? <Badge variant="secondary">{usageCount}</Badge> : "0"}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={isProtected}
+                                onClick={() => handleDeleteSpawn(item.id)}
+                                className="rounded-xl"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
 
@@ -1052,7 +1258,11 @@ export default function MushroomFarmManagerApp() {
                       <Select
                         value={newLot.species}
                         onValueChange={(value) =>
-                          setNewLot((prev) => ({ ...prev, species: value }))
+                          setNewLot((prev) => ({
+                            ...prev,
+                            species: value,
+                            spawnReceiptId: "",
+                          }))
                         }
                       >
                         <SelectTrigger>
@@ -1067,6 +1277,46 @@ export default function MushroomFarmManagerApp() {
                         </SelectContent>
                       </Select>
                     </div>
+
+                    <div>
+                      <Label>Spawn batch</Label>
+                      <Select
+                        value={newLot.spawnReceiptId}
+                        onValueChange={(value) =>
+                          setNewLot((prev) => ({ ...prev, spawnReceiptId: value }))
+                        }
+                        disabled={!availableSpawnOptionsForNewLot.length}
+                      >
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={
+                              availableSpawnOptionsForNewLot.length
+                                ? "Select a spawn batch"
+                                : "No matching spawn available"
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableSpawnOptionsForNewLot.map((item) => (
+                            <SelectItem key={item.id} value={String(item.id)}>
+                              {item.lotCode} · {item.supplier} · {item.bagsRemaining} bag(s) left
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label>Lot code</Label>
+                      <Input
+                        value={newLot.lotCode}
+                        onChange={(e) =>
+                          setNewLot((prev) => ({ ...prev, lotCode: e.target.value }))
+                        }
+                        placeholder="Optional auto-generated if blank"
+                      />
+                    </div>
+
                     <div>
                       <Label>Inoculation date</Label>
                       <Input
@@ -1077,6 +1327,7 @@ export default function MushroomFarmManagerApp() {
                         }
                       />
                     </div>
+
                     <div>
                       <Label>Blocks created</Label>
                       <Input
@@ -1088,6 +1339,7 @@ export default function MushroomFarmManagerApp() {
                         }
                       />
                     </div>
+
                     <div>
                       <Label>Spawn bags used</Label>
                       <Input
@@ -1099,6 +1351,7 @@ export default function MushroomFarmManagerApp() {
                         }
                       />
                     </div>
+
                     <div className="rounded-2xl bg-slate-100 p-4 text-sm text-slate-600">
                       Expected ready date:{" "}
                       <span className="font-medium text-slate-900">
@@ -1107,6 +1360,7 @@ export default function MushroomFarmManagerApp() {
                         )}
                       </span>
                     </div>
+
                     <div>
                       <Label>Notes</Label>
                       <Textarea
@@ -1117,7 +1371,8 @@ export default function MushroomFarmManagerApp() {
                         rows={3}
                       />
                     </div>
-                    <Button className="w-full rounded-2xl">
+
+                    <Button className="w-full rounded-2xl" disabled={!availableSpawnOptionsForNewLot.length}>
                       <Plus className="mr-2 h-4 w-4" />
                       Create lot
                     </Button>
@@ -1135,39 +1390,58 @@ export default function MushroomFarmManagerApp() {
                       <TableRow>
                         <TableHead>Lot</TableHead>
                         <TableHead>Species</TableHead>
+                        <TableHead>Spawn batch</TableHead>
                         <TableHead>Inoculated</TableHead>
                         <TableHead>Ready</TableHead>
                         <TableHead>Blocks</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {lotsWithTiming.map((lot) => (
-                        <TableRow key={lot.id}>
-                          <TableCell className="font-medium">{lot.lotCode}</TableCell>
-                          <TableCell>{lot.species}</TableCell>
-                          <TableCell>{formatDate(lot.inoculationDate)}</TableCell>
-                          <TableCell>{formatDate(lot.expectedReadyDate)}</TableCell>
-                          <TableCell>
-                            {lot.blocksAvailable} / {lot.blocksCreated}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                lot.status === "ready"
-                                  ? "default"
-                                  : lot.status === "closed"
-                                  ? "secondary"
-                                  : lot.status === "moved"
-                                  ? "outline"
-                                  : "secondary"
-                              }
-                            >
-                              {lot.status}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {lotsWithTiming.map((lot) => {
+                        const linkedSpawn = getSpawnById(lot.spawnReceiptId);
+
+                        return (
+                          <TableRow key={lot.id}>
+                            <TableCell className="font-medium">{lot.lotCode}</TableCell>
+                            <TableCell>{lot.species}</TableCell>
+                            <TableCell>{linkedSpawn?.lotCode || "Missing"}</TableCell>
+                            <TableCell>{formatDate(lot.inoculationDate)}</TableCell>
+                            <TableCell>{formatDate(lot.expectedReadyDate)}</TableCell>
+                            <TableCell>
+                              {lot.blocksAvailable} / {lot.blocksCreated}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  lot.effectiveStatus === "ready"
+                                    ? "default"
+                                    : lot.effectiveStatus === "closed"
+                                    ? "secondary"
+                                    : lot.effectiveStatus === "moved"
+                                    ? "outline"
+                                    : "secondary"
+                                }
+                              >
+                                {lot.effectiveStatus}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteLot(lot.id)}
+                                className="rounded-xl"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
 
@@ -1198,7 +1472,12 @@ export default function MushroomFarmManagerApp() {
                   </TableHeader>
                   <TableBody>
                     {lotsWithTiming
-                      .filter((lot) => lot.blocksAvailable > 0 && lot.status !== "closed" && lot.status !== "moved")
+                      .filter(
+                        (lot) =>
+                          Number(lot.blocksAvailable) > 0 &&
+                          lot.effectiveStatus !== "closed" &&
+                          lot.effectiveStatus !== "moved"
+                      )
                       .map((lot) => (
                         <TableRow key={lot.id}>
                           <TableCell className="font-medium">{lot.lotCode}</TableCell>
@@ -1221,9 +1500,12 @@ export default function MushroomFarmManagerApp() {
                   </TableBody>
                 </Table>
 
-                {!lotsWithTiming.filter((lot) => lot.blocksAvailable > 0 && lot.status !== "closed" && lot.status !== "moved").length && (
-                  <p className="mt-4 text-sm text-slate-500">No incubation lots yet.</p>
-                )}
+                {!lotsWithTiming.filter(
+                  (lot) =>
+                    Number(lot.blocksAvailable) > 0 &&
+                    lot.effectiveStatus !== "closed" &&
+                    lot.effectiveStatus !== "moved"
+                ).length && <p className="mt-4 text-sm text-slate-500">No incubation lots yet.</p>}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1246,16 +1528,22 @@ export default function MushroomFarmManagerApp() {
                           <SelectValue placeholder="Select a lot" />
                         </SelectTrigger>
                         <SelectContent>
-                          {lots
-                            .filter((lot) => lot.blocksAvailable > 0 && lot.status !== "closed")
+                          {lotsWithTiming
+                            .filter(
+                              (lot) =>
+                                Number(lot.blocksAvailable) > 0 &&
+                                lot.effectiveStatus !== "closed" &&
+                                lot.effectiveStatus !== "moved"
+                            )
                             .map((lot) => (
-                              <SelectItem key={lot.id} value={lot.id}>
+                              <SelectItem key={lot.id} value={String(lot.id)}>
                                 {lot.lotCode} · {lot.blocksAvailable} blocks
                               </SelectItem>
                             ))}
                         </SelectContent>
                       </Select>
                     </div>
+
                     <div>
                       <Label>Moved date</Label>
                       <Input
@@ -1266,6 +1554,7 @@ export default function MushroomFarmManagerApp() {
                         }
                       />
                     </div>
+
                     <div>
                       <Label>Blocks moved</Label>
                       <Input
@@ -1277,6 +1566,7 @@ export default function MushroomFarmManagerApp() {
                         }
                       />
                     </div>
+
                     <div>
                       <Label>Notes</Label>
                       <Textarea
@@ -1287,6 +1577,7 @@ export default function MushroomFarmManagerApp() {
                         }
                       />
                     </div>
+
                     <Button className="w-full rounded-2xl">Move to fruiting</Button>
                   </form>
                 </CardContent>
@@ -1320,9 +1611,7 @@ export default function MushroomFarmManagerApp() {
                     </TableBody>
                   </Table>
 
-                  {!moves.length && (
-                    <p className="mt-4 text-sm text-slate-500">No fruiting moves yet.</p>
-                  )}
+                  {!moves.length && <p className="mt-4 text-sm text-slate-500">No fruiting moves yet.</p>}
                 </CardContent>
               </Card>
             </div>
@@ -1356,6 +1645,7 @@ export default function MushroomFarmManagerApp() {
                         </SelectContent>
                       </Select>
                     </div>
+
                     <div>
                       <Label>Harvest date</Label>
                       <Input
@@ -1366,6 +1656,7 @@ export default function MushroomFarmManagerApp() {
                         }
                       />
                     </div>
+
                     <div>
                       <Label>Pounds harvested</Label>
                       <Input
@@ -1378,6 +1669,7 @@ export default function MushroomFarmManagerApp() {
                         }
                       />
                     </div>
+
                     <div>
                       <Label>Notes</Label>
                       <Textarea
@@ -1388,6 +1680,7 @@ export default function MushroomFarmManagerApp() {
                         }
                       />
                     </div>
+
                     <Button className="w-full rounded-2xl">Add harvest</Button>
                   </form>
                 </CardContent>
@@ -1409,8 +1702,8 @@ export default function MushroomFarmManagerApp() {
                           <SelectValue placeholder="Select lot" />
                         </SelectTrigger>
                         <SelectContent>
-                          {lots
-                            .filter((lot) => lot.blocksAvailable > 0)
+                          {lotsWithTiming
+                            .filter((lot) => Number(lot.blocksAvailable) > 0)
                             .map((lot) => (
                               <SelectItem key={lot.id} value={lot.lotCode}>
                                 {lot.lotCode}
@@ -1419,6 +1712,7 @@ export default function MushroomFarmManagerApp() {
                         </SelectContent>
                       </Select>
                     </div>
+
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <Label>Loss date</Label>
@@ -1442,6 +1736,7 @@ export default function MushroomFarmManagerApp() {
                         />
                       </div>
                     </div>
+
                     <div>
                       <Label>Reason</Label>
                       <Select
@@ -1459,6 +1754,7 @@ export default function MushroomFarmManagerApp() {
                         </SelectContent>
                       </Select>
                     </div>
+
                     <div>
                       <Label>Notes</Label>
                       <Textarea
@@ -1469,6 +1765,7 @@ export default function MushroomFarmManagerApp() {
                         }
                       />
                     </div>
+
                     <Button className="w-full rounded-2xl">Log loss</Button>
                   </form>
                 </CardContent>
@@ -1579,25 +1876,6 @@ export default function MushroomFarmManagerApp() {
                 {!lotAnalytics.length && (
                   <p className="mt-4 text-sm text-slate-500">No report data yet.</p>
                 )}
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-3xl shadow-sm">
-              <CardHeader>
-                <CardTitle>Notes on this build</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm text-slate-600">
-                <p>This build now saves farm data locally on the current device/browser.</p>
-                <p>
-                  It includes weather context via Open-Meteo, low spawn alerts under 3 bags,
-                  incubation timing by species, fruiting moves, harvest logging in pounds, and
-                  contamination/loss tracking.
-                </p>
-                <p>
-                  The next production step is still connecting a shared database and authentication
-                  layer so both you and your partner can use the same live data across phones and
-                  laptops.
-                </p>
               </CardContent>
             </Card>
           </TabsContent>
