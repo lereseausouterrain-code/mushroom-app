@@ -583,50 +583,29 @@ export default function MushroomFarmManagerApp() {
   }
 
   async function handleDeleteMove(id) {
-    const move = moves.find((item) => String(item.id) === String(id));
-    if (!move) return;
+  const move = moves.find((item) => String(item.id) === String(id));
+  if (!move) return;
 
-    const lot = getLotById(move.lotId);
-    if (!lot) {
-      alert("Linked lot not found.");
-      return;
-    }
+  const confirmed = window.confirm(
+    `Delete move for ${move.lotCode} and restore ${move.blocksMoved} block(s)?`
+  );
+  if (!confirmed) return;
 
-    const hasHarvests = harvests.some((item) => String(item.lotId) === String(move.lotId));
-    if (hasHarvests) {
-      alert("This move already has harvest history linked to it and cannot be deleted safely.");
-      return;
-    }
+  try {
+    const { error } = await supabase.rpc("delete_move_and_restore_blocks", {
+      p_move_id: id,
+    });
 
-    const confirmed = window.confirm(`Delete move for ${move.lotCode} and restore ${move.blocksMoved} block(s)?`);
-    if (!confirmed) return;
-
-    const restoredBlocks = Number(lot.blocksAvailable) + Number(move.blocksMoved);
-    const restoredStatus = getOpenLotStatus(lot.expectedReadyDate);
-
-    const { error: updateError } = await supabase
-      .from("lots_v2")
-      .update({
-        blocks_available: restoredBlocks,
-        status: restoredStatus,
-      })
-      .eq("id", lot.id);
-
-    if (updateError) {
-      alert(`Could not restore lot blocks: ${updateError.message}`);
-      return;
-    }
-
-    const { error: deleteError } = await supabase.from("moves").delete().eq("id", id);
-
-    if (deleteError) {
-      alert(`Move delete error: ${deleteError.message}`);
-      await loadAllData();
+    if (error) {
+      alert(`Move delete error: ${error.message}`);
       return;
     }
 
     await loadAllData();
+  } catch (err) {
+    alert(`Move delete failed: ${err.message}`);
   }
+}
 
   async function handleAddHarvest(e) {
     e.preventDefault();
@@ -665,13 +644,16 @@ export default function MushroomFarmManagerApp() {
   }
 
   async function handleDeleteHarvest(id) {
-    const harvest = harvests.find((item) => String(item.id) === String(id));
-    if (!harvest) return;
+  const harvest = harvests.find((item) => String(item.id) === String(id));
+  if (!harvest) return;
 
-    const confirmed = window.confirm(`Delete harvest for ${harvest.lotCode}?`);
-    if (!confirmed) return;
+  const confirmed = window.confirm(`Delete harvest for ${harvest.lotCode}?`);
+  if (!confirmed) return;
 
-    const { error } = await supabase.from("harvests").delete().eq("id", id);
+  try {
+    const { error } = await supabase.rpc("delete_harvest_and_restore_blocks", {
+      p_harvest_id: id,
+    });
 
     if (error) {
       alert(`Harvest delete error: ${error.message}`);
@@ -679,7 +661,10 @@ export default function MushroomFarmManagerApp() {
     }
 
     await loadAllData();
+  } catch (err) {
+    alert(`Harvest delete failed: ${err.message}`);
   }
+}
 
   async function handleAddLoss(e) {
     e.preventDefault();
