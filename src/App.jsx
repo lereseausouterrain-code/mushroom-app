@@ -1084,7 +1084,7 @@ export default function MushroomFarmManagerApp() {
           </TabsList>
 
           <TabsContent value="dashboard" className="mt-6 space-y-6">
-            <Card className="mt-8">
+            <Card className="mt-10">
   <CardHeader>
     <CardTitle>Weekly harvest trend</CardTitle>
   </CardHeader>
