@@ -1084,25 +1084,29 @@ export default function MushroomFarmManagerApp() {
           </TabsList>
 
           <TabsContent value="dashboard" className="mt-6 space-y-6">
-            <Card className="rounded-3xl shadow-sm">
-              <CardHeader>
-                <CardTitle>Weekly harvest trend</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-3 md:grid-cols-4">
-                  {weeklyHarvests.length ? (
-                    weeklyHarvests.map((entry) => (
-                      <div key={entry.weekStart} className="rounded-2xl bg-slate-100 p-4">
-                        <div className="text-sm text-slate-500">Week of {formatDate(entry.weekStart)}</div>
-                        <div className="mt-2 text-2xl font-semibold">{entry.quantityKg.toFixed(2)} kg</div>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-slate-500">No harvest data yet.</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <Card className="mt-8">
+  <CardHeader>
+    <CardTitle>Weekly harvest trend</CardTitle>
+  </CardHeader>
+  <CardContent>
+    <div className="grid gap-3 md:grid-cols-4">
+      {weeklyHarvests.length ? (
+        weeklyHarvests.map((entry) => (
+          <div key={entry.weekStart} className="rounded-2xl bg-slate-100 p-4">
+            <div className="text-sm text-slate-500">
+              Week of {formatDate(entry.weekStart)}
+            </div>
+            <div className="mt-2 text-2xl font-semibold">
+              {entry.quantityKg.toFixed(2)} kg
+            </div>
+          </div>
+        ))
+      ) : (
+        <p className="text-sm text-slate-500">No harvest data yet.</p>
+      )}
+    </div>
+  </CardContent>
+</Card>
 
             <div className="grid gap-6 lg:grid-cols-2">
               <Card className="rounded-3xl shadow-sm">
