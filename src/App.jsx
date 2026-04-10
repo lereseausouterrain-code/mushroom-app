@@ -294,6 +294,23 @@ export default function MushroomFarmManagerApp() {
   }, []);
 
   useEffect(() => {
+  const channel = supabase
+    .channel("realtime-farm")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public" },
+      () => {
+        loadAllData();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
+
+  useEffect(() => {
     async function loadWeather() {
       try {
         setWeather((prev) => ({ ...prev, loading: true, error: null }));
