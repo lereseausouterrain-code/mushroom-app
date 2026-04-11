@@ -162,7 +162,7 @@ function mapLossRow(row, lotsLookup) {
   };
 }
 
-function MetricCard({ title, value, subtitle, icon: Icon }) {
+function MetricCard({ title, value, subtitle, icon }) {
   return (
     <Card className="rounded-2xl shadow-sm">
       <CardContent className="p-5">
@@ -173,7 +173,7 @@ function MetricCard({ title, value, subtitle, icon: Icon }) {
             {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
           </div>
           <div className="rounded-2xl bg-slate-100 p-3">
-            <Icon className="h-5 w-5" />
+            {React.createElement(icon, { className: "h-5 w-5" })}
           </div>
         </div>
       </CardContent>
