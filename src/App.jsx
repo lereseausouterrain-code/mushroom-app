@@ -26,6 +26,8 @@ import {
 
 const speciesConfig = {
   "Blue Oyster": { code: "BO", incubationDays: 14 },
+  "Yellow Oyster": { code: "YO", incubationDays: 14 },
+  "Black Pearl": { code: "BP", incubationDays: 21 },
   "Lion's Mane": { code: "LM", incubationDays: 20 },
   Chestnut: { code: "CH", incubationDays: 30 },
 };
@@ -1073,15 +1075,35 @@ export default function MushroomFarmManagerApp() {
         </div>
 
         <Tabs defaultValue="dashboard" className="mt-8">
-          <TabsList className="grid w-full grid-cols-3 gap-2 rounded-2xl bg-white p-2 md:grid-cols-7">
-            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-            <TabsTrigger value="spawn">Spawn</TabsTrigger>
-            <TabsTrigger value="lots">Production Lots</TabsTrigger>
-            <TabsTrigger value="incubation">Incubation</TabsTrigger>
-            <TabsTrigger value="fruiting">Fruiting</TabsTrigger>
-            <TabsTrigger value="harvests">Harvests</TabsTrigger>
-            <TabsTrigger value="reports">Reports</TabsTrigger>
-          </TabsList>
+          <div className="relative">
+            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-gradient-to-r from-slate-50 to-transparent md:hidden" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-6 bg-gradient-to-l from-slate-50 to-transparent md:hidden" />
+            <div className="overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <TabsList className="flex w-max min-w-full snap-x snap-mandatory gap-2 rounded-2xl bg-white p-2 md:grid md:w-full md:grid-cols-7">
+              <TabsTrigger value="dashboard" className="min-w-[8.5rem] flex-none snap-start md:min-w-0">
+                Dashboard
+              </TabsTrigger>
+              <TabsTrigger value="spawn" className="min-w-[7rem] flex-none snap-start md:min-w-0">
+                Spawn
+              </TabsTrigger>
+              <TabsTrigger value="lots" className="min-w-[10rem] flex-none snap-start md:min-w-0">
+                Production Lots
+              </TabsTrigger>
+              <TabsTrigger value="incubation" className="min-w-[8.5rem] flex-none snap-start md:min-w-0">
+                Incubation
+              </TabsTrigger>
+              <TabsTrigger value="fruiting" className="min-w-[7rem] flex-none snap-start md:min-w-0">
+                Fruiting
+              </TabsTrigger>
+              <TabsTrigger value="harvests" className="min-w-[7rem] flex-none snap-start md:min-w-0">
+                Harvests
+              </TabsTrigger>
+              <TabsTrigger value="reports" className="min-w-[7rem] flex-none snap-start md:min-w-0">
+                Reports
+              </TabsTrigger>
+              </TabsList>
+            </div>
+          </div>
 
           <TabsContent value="dashboard" className="mt-6 space-y-6">
             <Card className="mt-10">
