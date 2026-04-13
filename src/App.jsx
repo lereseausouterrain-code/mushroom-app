@@ -997,84 +997,7 @@ export default function MushroomFarmManagerApp() {
           </Card>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <MetricCard title="Incubating blocks" value={totalIncubatingBlocks} subtitle="Active lots only" icon={Sprout} />
-          <MetricCard title="Due this week" value={dueThisWeekBlocks} subtitle="Blocks expected ready in 7 days" icon={CalendarClock} />
-          <MetricCard title="Harvest this week" value={`${weeklyHarvestTotal.toFixed(2)} kg`} subtitle="Rolling 7-day harvest total" icon={Scale} />
-          <MetricCard title="Avg yield / block" value={`${averageYieldPerBlock.toFixed(2)} kg`} subtitle="Across harvested lots" icon={FlaskConical} />
-          <MetricCard title="Expected next 14 days" value={expectedNext14Days} subtitle="Blocks likely ready to fruit" icon={Package} />
-        </div>
-
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          <div className="space-y-4">
-            {lowSpawnAlerts.length > 0 ? (
-              <Alert className="rounded-2xl border-amber-200 bg-amber-50">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Low spawn inventory</AlertTitle>
-                <AlertDescription>
-                  {lowSpawnAlerts.map((item) => `${item.species}: ${item.bagsRemaining} bag(s) remaining`).join(" • ")}
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <Alert className="rounded-2xl border-emerald-200 bg-emerald-50">
-                <CheckCircle2 className="h-4 w-4" />
-                <AlertTitle>Spawn stock looks good</AlertTitle>
-                <AlertDescription>No species is currently below the 3-bag alert threshold.</AlertDescription>
-              </Alert>
-            )}
-
-            {readyLots.length > 0 && (
-              <Alert className="rounded-2xl border-blue-200 bg-blue-50">
-                <CalendarClock className="h-4 w-4" />
-                <AlertTitle>Lots ready to move</AlertTitle>
-                <AlertDescription>
-                  {readyLots.map((lot) => `${lot.lotCode} (${lot.blocksAvailable} blocks)`).join(" • ")}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {overdueLots.length > 0 && (
-              <Alert className="rounded-2xl border-rose-200 bg-rose-50">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Overdue incubation lots</AlertTitle>
-                <AlertDescription>
-                  {overdueLots.map((lot) => `${lot.lotCode} overdue since ${formatDate(lot.expectedReadyDate)}`).join(" • ")}
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
-
-          <Card className="rounded-3xl shadow-sm">
-            <CardHeader>
-              <CardTitle>Species summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 md:grid-cols-3">
-                {speciesSummary.map((item) => (
-                  <div key={item.species} className="rounded-2xl border bg-white p-4">
-                    <div className="text-base font-medium">{item.species}</div>
-                    <div className="mt-3 space-y-2 text-sm text-slate-600">
-                      <div>
-                        Incubating: <span className="font-medium text-slate-900">{item.incubatingBlocks}</span>
-                      </div>
-                      <div>
-                        Spawn: <span className="font-medium text-slate-900">{item.spawnRemaining} bags</span>
-                      </div>
-                      <div>
-                        Avg yield/block: <span className="font-medium text-slate-900">{item.avgLotYield.toFixed(2)} kg</span>
-                      </div>
-                      <div>
-                        Losses: <span className="font-medium text-slate-900">{item.speciesLosses} blocks</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Tabs defaultValue="dashboard" className="mt-8">
+        <Tabs defaultValue="dashboard" className="mt-6">
           <div className="relative">
             <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-gradient-to-r from-slate-50 to-transparent md:hidden" />
             <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-6 bg-gradient-to-l from-slate-50 to-transparent md:hidden" />
@@ -1106,6 +1029,83 @@ export default function MushroomFarmManagerApp() {
           </div>
 
           <TabsContent value="dashboard" className="mt-6 space-y-6">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <MetricCard title="Incubating blocks" value={totalIncubatingBlocks} subtitle="Active lots only" icon={Sprout} />
+              <MetricCard title="Due this week" value={dueThisWeekBlocks} subtitle="Blocks expected ready in 7 days" icon={CalendarClock} />
+              <MetricCard title="Harvest this week" value={`${weeklyHarvestTotal.toFixed(2)} kg`} subtitle="Rolling 7-day harvest total" icon={Scale} />
+              <MetricCard title="Avg yield / block" value={`${averageYieldPerBlock.toFixed(2)} kg`} subtitle="Across harvested lots" icon={FlaskConical} />
+              <MetricCard title="Expected next 14 days" value={expectedNext14Days} subtitle="Blocks likely ready to fruit" icon={Package} />
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="space-y-4">
+                {lowSpawnAlerts.length > 0 ? (
+                  <Alert className="rounded-2xl border-amber-200 bg-amber-50">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Low spawn inventory</AlertTitle>
+                    <AlertDescription>
+                      {lowSpawnAlerts.map((item) => `${item.species}: ${item.bagsRemaining} bag(s) remaining`).join(" • ")}
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <Alert className="rounded-2xl border-emerald-200 bg-emerald-50">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <AlertTitle>Spawn stock looks good</AlertTitle>
+                    <AlertDescription>No species is currently below the 3-bag alert threshold.</AlertDescription>
+                  </Alert>
+                )}
+
+                {readyLots.length > 0 && (
+                  <Alert className="rounded-2xl border-blue-200 bg-blue-50">
+                    <CalendarClock className="h-4 w-4" />
+                    <AlertTitle>Lots ready to move</AlertTitle>
+                    <AlertDescription>
+                      {readyLots.map((lot) => `${lot.lotCode} (${lot.blocksAvailable} blocks)`).join(" • ")}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {overdueLots.length > 0 && (
+                  <Alert className="rounded-2xl border-rose-200 bg-rose-50">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Overdue incubation lots</AlertTitle>
+                    <AlertDescription>
+                      {overdueLots.map((lot) => `${lot.lotCode} overdue since ${formatDate(lot.expectedReadyDate)}`).join(" • ")}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+
+              <Card className="rounded-3xl shadow-sm">
+                <CardHeader>
+                  <CardTitle>Species summary</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {speciesSummary.map((item) => (
+                      <div key={item.species} className="rounded-2xl border bg-white p-4">
+                        <div className="text-base font-medium">{item.species}</div>
+                        <div className="mt-3 space-y-2 text-sm text-slate-600">
+                          <div>
+                            Incubating: <span className="font-medium text-slate-900">{item.incubatingBlocks}</span>
+                          </div>
+                          <div>
+                            Spawn: <span className="font-medium text-slate-900">{item.spawnRemaining} bags</span>
+                          </div>
+                          <div>
+                            Avg yield/block: <span className="font-medium text-slate-900">{item.avgLotYield.toFixed(2)} kg</span>
+                          </div>
+                          <div>
+                            Losses: <span className="font-medium text-slate-900">{item.speciesLosses} blocks</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
             <Card className="mt-10">
   <CardHeader>
     <CardTitle>Weekly harvest trend</CardTitle>
